@@ -1,51 +1,81 @@
+
 <!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Светофор</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<canvas id="game"></canvas>
+    <canvas id="game"></canvas>
 
-<div id="hud">
-    <div id="crosshair">+</div>
-
-    <div id="info">
-        <span id="weapon">Оружие: нет</span>
-        <span id="ammo"></span>
-    </div>
-
-    <div id="interaction">
-        <span id="hint">WASD — движение</span>
-    </div>
-
-    <div id="stove">
-        <div>ПЕЧКА</div>
-        <div class="bar">
-            <div id="stoveFill"></div>
+    <!-- Выбор устройства -->
+    <div id="deviceMenu">
+        <div class="menuBox">
+            <h1>СВЕТОФОР</h1>
+            <p>Выбери устройство</p>
+            <button id="pcMode">ИГРАТЬ НА ПК</button>
+            <button id="mobileMode">ИГРАТЬ НА ТЕЛЕФОНЕ</button>
         </div>
     </div>
-</div>
 
-<div id="cameraScreen">
-    <div class="cameraTop">КАМЕРЫ СВЕТОФОРА</div>
+    <!-- Интерфейс -->
+    <div id="hud">
+        <div id="crosshair">+</div>
 
-    <div id="cameraView">
-        <div class="noise"></div>
-        <div id="cameraText">КАМЕРА 01</div>
+        <div id="info">
+            <span id="weapon">Оружие: нет</span>
+            <span id="ammo"></span>
+        </div>
+
+        <div id="interaction">Выбери устройство</div>
+
+        <div id="stove">
+            <div>ПЕЧКА</div>
+            <div class="bar">
+                <div id="stoveFill"></div>
+            </div>
+        </div>
     </div>
 
-    <div class="cameraButtons">
-        <button data-cam="0">КАМЕРА 01</button>
-        <button data-cam="1">КАМЕРА 02</button>
-        <button data-cam="2">КАМЕРА 03</button>
-        <button id="closeCameras">ЗАКРЫТЬ</button>
-    </div>
-</div>
+    <!-- Управление телефоном -->
+    <div id="mobileControls">
+        <div id="movePad">
+            <button class="moveBtn" data-key="w">▲</button>
+            <div class="moveRow">
+                <button class="moveBtn" data-key="a">◀</button>
+                <button class="moveBtn" data-key="s">▼</button>
+                <button class="moveBtn" data-key="d">▶</button>
+            </div>
+        </div>
 
-<script src="game.js"></script>
+        <div id="actionPad">
+            <button id="mobileInteract">ДЕЙСТВИЕ</button>
+            <button id="mobileShoot">ОГОНЬ</button>
+            <button id="mobileFlash">ВСПЫШКА</button>
+            <button id="mobileDoor">ДВЕРЬ</button>
+            <button id="mobileCameras">КАМЕРЫ</button>
+        </div>
+    </div>
+
+    <!-- Камеры -->
+    <div id="cameraScreen">
+        <div class="cameraTop">КАМЕРЫ СВЕТОФОРА</div>
+        <div id="cameraView">
+            <div id="cameraText">КАМЕРА 01</div>
+            <div class="noise"></div>
+        </div>
+
+        <div class="cameraButtons">
+            <button data-cam="0">КАМЕРА 01</button>
+            <button data-cam="1">КАМЕРА 02</button>
+            <button data-cam="2">КАМЕРА 03</button>
+            <button id="closeCameras">ЗАКРЫТЬ</button>
+        </div>
+    </div>
+
+    <script src="game.js"></script>
 </body>
 </html>
