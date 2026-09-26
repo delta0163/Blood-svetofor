@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Светофор</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<canvas id="game"></canvas>
+
+<div id="hud">
+    <div id="crosshair">+</div>
+
+    <div id="info">
+        <span id="weapon">Оружие: нет</span>
+        <span id="ammo"></span>
+    </div>
+
+    <div id="interaction">
+        <span id="hint">WASD — движение</span>
+    </div>
+
+    <div id="stove">
+        <div>ПЕЧКА</div>
+        <div class="bar">
+            <div id="stoveFill"></div>
+        </div>
+    </div>
+</div>
+
+<div id="cameraScreen">
+    <div class="cameraTop">КАМЕРЫ СВЕТОФОРА</div>
+
+    <div id="cameraView">
+        <div class="noise"></div>
+        <div id="cameraText">КАМЕРА 01</div>
+    </div>
+
+    <div class="cameraButtons">
+        <button data-cam="0">КАМЕРА 01</button>
+        <button data-cam="1">КАМЕРА 02</button>
+        <button data-cam="2">КАМЕРА 03</button>
+        <button id="closeCameras">ЗАКРЫТЬ</button>
+    </div>
+</div>
+
+<script src="game.js"></script>
+</body>
+</html>
