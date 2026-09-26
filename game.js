@@ -1,149 +1,137 @@
+
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
-const weaponText = document.getElementById("weapon");
-const ammoText = document.getElementById("ammo");
-const hint = document.getElementById("hint");
+const $ = id => document.getElementById(id);
 
-const stoveFill = document.getElementById("stoveFill");
-
-const cameraScreen = document.getElementById("cameraScreen");
-const cameraText = document.getElementById("cameraText");
-const closeCameras = document.getElementById("closeCameras");
-
-let W = 0;
-let H = 0;
+let W, H;
 
 function resize() {
     W = canvas.width = window.innerWidth;
     H = canvas.height = window.innerHeight;
 }
-
 window.addEventListener("resize", resize);
 resize();
 
 /* =========================
-   ИГРОК
+   СОСТОЯНИЕ ИГРЫ
 ========================= */
 
+let deviceMode = null;
+let doorClosed = false;
+let cameraOpen = false;
+let currentCamera = 0;
+let stove = 100;
+let lastTime = performance.now();
+
+const keys = {};
+
 const player = {
-    x: 0,
-    y: 0,
-    angle: 0,
-
-    // вертикальный обзор
+    x: 11.5,
+    y: 12.5,
+    angle: -Math.PI / 2,
     pitch: 0,
-
-    speed: 2.4,
-
+    speed: 3,
     weapon: null,
-    ammo: 2,
-
+    ammo: 4,
     shooting: false
 };
 
-/*
-    Карта:
-
-    # = стена
-    D = дверь
-    C = камера
-    T = стол/компьютер
-    S = дробовик
-    F = печка
-    . = свободное место
-*/
+/* =========================
+   КАРТА
+========================= */
 
 const map = [
     "########################",
-    "#......................#",
-    "#......................#",
-    "#......................#",
-    "#......................#",
-    "#..........####........#",
-    "#..........#..#........#",
-    "#..........#..#........#",
-    "#......................#",
-    "#......................#",
-    "#......................#",
-    "#......................#",
-    "#...............D......#",
-    "#......................#",
-    "#......................#",
-    "##########......########",
-    "##########......########",
-    "##########......########",
-    "##########......########",
-    "##########......########",
-    "##########......########",
-    "##########..F...########",
+    "#########......#########",
+    "#########......#########",
+    "#########......#########",
+    "#########......#########",
+    "#########......#########",
+    "#########......#########",
+    "##....................##",
+    "##....................##",
+    "##....................##",
+    "##....................##",
+    "##....................##",
+    "##....................##",
+    "##....................##",
+    "##....................##",
+    "##....................##",
+    "##....................##",
     "########################"
 ];
 
 const objects = [
-    {
-        type: "camera",
-        x: 2.5,
-        y: 7.5,
-        name: "Камера со вспышкой",
-        used: false
-    },
-
-    {
-        type: "computer",
-        x: 9.5,
-        y: 10.5,
-        name: "Компьютер"
-    },
-
-    {
-        type: "shotgun",
-        x: 11.2,
-        y: 10.5,
-        name: "Дробовик"
-    },
-
-    {
-        type: "stove",
-        x: 12.5,
-        y: 21,
-        name: "Печка"
-    }
+    { type: "camera", x: 3.5, y: 10.5 },
+    { type: "computer", x: 10, y: 12.5 },
+    { type: "shotgun", x: 12.5, y: 12.5 },
+    { type: "stove", x: 11.5, y: 2.5 }
 ];
 
+const door = { x: 21, y: 10.5 };
+
 /* =========================
-   УПРАВЛЕНИЕ
+   ВЫБОР УСТРОЙСТВА
 ========================= */
 
-const keys = {};
+$("pcMode").onclick = () => startGame("pc");
+$("mobileMode").onclick = () => startGame("mobile");
+
+function startGame(mode) {
+    deviceMode = mode;
+    $("deviceMenu").style.display = "none";
+
+    document.body.classList.toggle(
+        "mobile-mode",
+        mode === "mobile"
+    );
+
+    $("interaction").textContent =
+        mode === "mobile"
+            ? "Джойстик — движение | Палец — обзор"
+            : "WASD — движение | Мышь — обзор";
+}
+
+/* =========================
+   КЛАВИАТУРА
+========================= */
 
 window.addEventListener("keydown", e => {
-    keys[e.key.toLowerCase()] = true;
+    const k = e.key.toLowerCase();
 
-    if (e.key.toLowerCase() === "e") {
-        interact();
+    if (["w", "a", "s", "d", " "].includes(k)) {
+        e.preventDefault();
     }
 
-    if (e.key.toLowerCase() === "f") {
-        shoot();
-    }
+    keys[k] = true;
 
-    if (e.key === "Escape") {
-        closeCameraSystem();
-    }
+    if (e.repeat) return;
+
+    if (k === "e") interact();
+    if (k === "f") shoot();
+    if (k === "escape") closeCameraSystem();
 });
 
 window.addEventListener("keyup", e => {
     keys[e.key.toLowerCase()] = false;
 });
 
-/* Мышь */
+function isMoving() {
+    return keys.w || keys.a || keys.s || keys.d;
+}
+
+/* =========================
+   МЫШЬ И СЕНСОРНЫЙ ОБЗОР
+========================= */
 
 let mouseDown = false;
 let lastMouseX = 0;
 let lastMouseY = 0;
 
 canvas.addEventListener("mousedown", e => {
+    if (deviceMode !== "pc") return;
+
     mouseDown = true;
     lastMouseX = e.clientX;
     lastMouseY = e.clientY;
@@ -154,7 +142,7 @@ window.addEventListener("mouseup", () => {
 });
 
 window.addEventListener("mousemove", e => {
-    if (!mouseDown || cameraScreen.style.display === "block") return;
+    if (!mouseDown || deviceMode !== "pc" || cameraOpen) return;
 
     const dx = e.clientX - lastMouseX;
     const dy = e.clientY - lastMouseY;
@@ -162,44 +150,79 @@ window.addEventListener("mousemove", e => {
     lastMouseX = e.clientX;
     lastMouseY = e.clientY;
 
-    player.angle += dx * 0.004;
-
-    player.pitch += dy * 0.7;
-
-    player.pitch = Math.max(-120, Math.min(120, player.pitch));
+    look(dx, dy);
 });
 
-/* Сенсор */
+function look(dx, dy) {
+    player.angle += dx * 0.004;
+    player.pitch = Math.max(
+        -180,
+        Math.min(180, player.pitch + dy * 0.7)
+    );
+}
 
-let touchX = 0;
-let touchY = 0;
+/* Сенсорный обзор: движение пальцем по свободной части экрана */
 
-canvas.addEventListener("touchstart", e => {
-    if (e.touches.length !== 1) return;
+let lookTouch = null;
 
-    touchX = e.touches[0].clientX;
-    touchY = e.touches[0].clientY;
-}, { passive: false });
+canvas.addEventListener("pointerdown", e => {
+    if (deviceMode !== "mobile" || cameraOpen) return;
 
-canvas.addEventListener("touchmove", e => {
-    e.preventDefault();
+    if (e.clientX < W * 0.27 || e.clientX > W * 0.72) return;
 
-    if (e.touches.length !== 1) return;
+    lookTouch = {
+        id: e.pointerId,
+        x: e.clientX,
+        y: e.clientY
+    };
 
-    const x = e.touches[0].clientX;
-    const y = e.touches[0].clientY;
+    canvas.setPointerCapture(e.pointerId);
+});
 
-    const dx = x - touchX;
-    const dy = y - touchY;
+canvas.addEventListener("pointermove", e => {
+    if (!lookTouch || e.pointerId !== lookTouch.id) return;
 
-    player.angle += dx * 0.008;
-    player.pitch += dy * 0.8;
+    const dx = e.clientX - lookTouch.x;
+    const dy = e.clientY - lookTouch.y;
 
-    player.pitch = Math.max(-120, Math.min(120, player.pitch));
+    look(dx, dy);
 
-    touchX = x;
-    touchY = y;
-}, { passive: false });
+    lookTouch.x = e.clientX;
+    lookTouch.y = e.clientY;
+});
+
+function endLook(e) {
+    if (lookTouch && e.pointerId === lookTouch.id) {
+        lookTouch = null;
+    }
+}
+
+canvas.addEventListener("pointerup", endLook);
+canvas.addEventListener("pointercancel", endLook);
+
+/* =========================
+   МОБИЛЬНЫЙ ДЖОЙСТИК
+========================= */
+
+document.querySelectorAll(".moveBtn").forEach(button => {
+    const key = button.dataset.key;
+
+    button.addEventListener("pointerdown", e => {
+        if (deviceMode !== "mobile") return;
+
+        e.preventDefault();
+        keys[key] = true;
+        button.setPointerCapture(e.pointerId);
+    });
+
+    function release() {
+        keys[key] = false;
+    }
+
+    button.addEventListener("pointerup", release);
+    button.addEventListener("pointercancel", release);
+    button.addEventListener("lostpointercapture", release);
+});
 
 /* =========================
    КОЛЛИЗИИ
@@ -211,6 +234,13 @@ function isWall(x, y) {
 
     if (my < 0 || my >= map.length) return true;
     if (mx < 0 || mx >= map[my].length) return true;
+
+    if (
+        Math.floor(door.x) === mx &&
+        Math.floor(door.y) === my
+    ) {
+        return doorClosed;
+    }
 
     return map[my][mx] === "#";
 }
@@ -231,42 +261,39 @@ function canMove(x, y) {
 ========================= */
 
 function updateMovement(dt) {
-    if (cameraScreen.style.display === "block") return;
+    if (cameraOpen) return;
 
     let forward = 0;
     let side = 0;
 
-    if (keys["w"]) forward += 1;
-    if (keys["s"]) forward -= 1;
-    if (keys["a"]) side -= 1;
-    if (keys["d"]) side += 1;
+    if (keys.w) forward++;
+    if (keys.s) forward--;
+    if (keys.a) side--;
+    if (keys.d) side++;
 
     const len = Math.hypot(forward, side);
 
-    if (len > 0) {
-        forward /= len;
-        side /= len;
+    if (!len) return;
 
-        const cos = Math.cos(player.angle);
-        const sin = Math.sin(player.angle);
+    forward /= len;
+    side /= len;
 
-        const dx =
-            (cos * forward - sin * side) *
-            player.speed *
-            dt;
+    const dx =
+        (Math.cos(player.angle) * forward -
+         Math.sin(player.angle) * side) *
+        player.speed * dt;
 
-        const dy =
-            (sin * forward + cos * side) *
-            player.speed *
-            dt;
+    const dy =
+        (Math.sin(player.angle) * forward +
+         Math.cos(player.angle) * side) *
+        player.speed * dt;
 
-        if (canMove(player.x + dx, player.y)) {
-            player.x += dx;
-        }
+    if (canMove(player.x + dx, player.y)) {
+        player.x += dx;
+    }
 
-        if (canMove(player.x, player.y + dy)) {
-            player.y += dy;
-        }
+    if (canMove(player.x, player.y + dy)) {
+        player.y += dy;
     }
 }
 
@@ -275,6 +302,7 @@ function updateMovement(dt) {
 ========================= */
 
 const FOV = Math.PI / 3;
+const depthBuffer = [];
 
 function castRay(angle) {
     const cos = Math.cos(angle);
@@ -282,69 +310,55 @@ function castRay(angle) {
 
     let distance = 0;
 
-    const step = 0.025;
-
     while (distance < 30) {
-        distance += step;
+        distance += 0.025;
 
         const x = player.x + cos * distance;
         const y = player.y + sin * distance;
 
-        if (isWall(x, y)) {
-            return distance;
-        }
+        if (isWall(x, y)) return distance;
     }
 
     return 30;
 }
 
 function render3D() {
-    ctx.fillStyle = "#090909";
-    ctx.fillRect(0, 0, W, H / 2);
-
-    ctx.fillStyle = "#171717";
-    ctx.fillRect(0, H / 2, W, H / 2);
-
-    /*
-        Вертикальное смещение обзора.
-    */
-
     const horizon = H / 2 + player.pitch;
 
-    for (let x = 0; x < W; x += 2) {
+    ctx.fillStyle = "#101010";
+    ctx.fillRect(0, 0, W, horizon);
 
+    ctx.fillStyle = "#26231f";
+    ctx.fillRect(0, horizon, W, H - horizon);
+
+    const strip = 3;
+
+    for (let x = 0; x < W; x += strip) {
         const cameraX = x / W;
 
         const rayAngle =
-            player.angle +
-            (cameraX - 0.5) * FOV;
+            player.angle + (cameraX - 0.5) * FOV;
 
         let distance = castRay(rayAngle);
 
-        /*
-            Исправление fish-eye.
-        */
-
         distance *= Math.cos(rayAngle - player.angle);
+        depthBuffer[Math.floor(x / strip)] = distance;
 
         const wallHeight =
-            Math.min(H * 2, H / Math.max(distance, 0.05));
+            Math.min(H * 3, H / Math.max(distance, 0.05));
 
-        const top =
-            horizon - wallHeight / 2;
+        const top = horizon - wallHeight / 2;
 
-        const brightness =
-            Math.max(25, 170 - distance * 10);
-
-        ctx.fillStyle =
-            `rgb(${brightness},${brightness},${brightness})`;
-
-        ctx.fillRect(
-            x,
-            top,
-            2,
-            wallHeight
+        const shade = Math.max(
+            18,
+            Math.floor(165 / (1 + distance * 0.16))
         );
+
+        ctx.fillStyle = `rgb(${shade},${shade},${shade})`;
+        ctx.fillRect(x, top, strip + 1, wallHeight);
+
+        ctx.fillStyle = `rgba(0,0,0,${Math.min(.65, distance / 22)})`;
+        ctx.fillRect(x, top, strip + 1, wallHeight);
     }
 
     renderObjects(horizon);
@@ -355,161 +369,66 @@ function render3D() {
 ========================= */
 
 function renderObjects(horizon) {
-
     const visible = [];
 
     for (const obj of objects) {
-
         const dx = obj.x - player.x;
         const dy = obj.y - player.y;
-
         const distance = Math.hypot(dx, dy);
 
-        let relativeAngle =
-            Math.atan2(dy, dx) - player.angle;
+        let angle = Math.atan2(dy, dx) - player.angle;
 
-        while (relativeAngle > Math.PI)
-            relativeAngle -= Math.PI * 2;
+        while (angle > Math.PI) angle -= Math.PI * 2;
+        while (angle < -Math.PI) angle += Math.PI * 2;
 
-        while (relativeAngle < -Math.PI)
-            relativeAngle += Math.PI * 2;
-
-        if (Math.abs(relativeAngle) < FOV / 2) {
-
-            visible.push({
-                obj,
-                distance,
-                angle: relativeAngle
-            });
+        if (Math.abs(angle) < FOV / 2 + 0.3) {
+            visible.push({ obj, distance, angle });
         }
     }
 
-    visible.sort((a, b) =>
-        b.distance - a.distance
-    );
+    visible.sort((a, b) => b.distance - a.distance);
 
     for (const item of visible) {
-
         const { obj, distance, angle } = item;
 
         const screenX =
             W / 2 +
-            Math.tan(angle) /
-            Math.tan(FOV / 2) *
-            W / 2;
+            Math.tan(angle) / Math.tan(FOV / 2) * W / 2;
 
-        const size =
-            Math.min(
-                H * 0.8,
-                H / Math.max(distance, 0.2) * 0.7
-            );
+        const size = Math.min(
+            H * 0.8,
+            H / Math.max(distance, 0.2) * 0.7
+        );
 
-        const centerY = horizon;
+        const y = horizon;
 
         if (obj.type === "camera") {
-
-            drawBox(
-                screenX,
-                centerY - size * 0.45,
-                size * 0.45,
-                size * 0.25,
-                "#777"
-            );
-
-            drawCircle(
-                screenX,
-                centerY - size * 0.33,
-                size * 0.09,
-                "#111"
-            );
+            box(screenX, y - size * .4, size * .5, size * .3, "#777");
+            box(screenX, y - size * .4, size * .15, size * .15, "#111");
         }
 
         if (obj.type === "computer") {
-
-            drawBox(
-                screenX,
-                centerY - size * 0.45,
-                size * 0.5,
-                size * 0.35,
-                "#555"
-            );
-
-            ctx.fillStyle = "#151515";
-            ctx.fillRect(
-                screenX - size * 0.19,
-                centerY - size * 0.4,
-                size * 0.38,
-                size * 0.22
-            );
+            box(screenX, y - size * .4, size * .65, size * .45, "#555");
+            box(screenX, y - size * .42, size * .5, size * .25, "#19302d");
+            box(screenX, y - size * .1, size * .1, size * .2, "#444");
         }
 
         if (obj.type === "shotgun") {
-
-            ctx.save();
-
-            ctx.translate(
-                screenX,
-                centerY
-            );
-
-            ctx.rotate(-0.2);
-
-            ctx.fillStyle = "#4d4d4d";
-
-            ctx.fillRect(
-                -size * 0.12,
-                -size * 0.05,
-                size * 0.35,
-                size * 0.07
-            );
-
-            ctx.fillStyle = "#222";
-
-            ctx.fillRect(
-                -size * 0.22,
-                -size * 0.04,
-                size * 0.12,
-                size * 0.16
-            );
-
-            ctx.restore();
+            box(screenX, y, size * .5, size * .07, "#555");
+            box(screenX - size * .15, y + size * .08, size * .18, size * .2, "#28211c");
         }
 
         if (obj.type === "stove") {
-
-            drawBox(
-                screenX,
-                centerY - size * 0.55,
-                size * 0.5,
-                size * 0.7,
-                "#333"
-            );
-
-            drawCircle(
-                screenX,
-                centerY - size * 0.2,
-                size * 0.15,
-                "#999"
-            );
+            box(screenX, y - size * .3, size * .55, size * .7, "#3d3935");
+            box(screenX, y - size * .3, size * .3, size * .3, "#d84c13");
+            box(screenX, y - size * .3, size * .16, size * .16, "#ffb42b");
         }
     }
 }
 
-function drawBox(x, y, w, h, color) {
+function box(x, y, w, h, color) {
     ctx.fillStyle = color;
-    ctx.fillRect(
-        x - w / 2,
-        y - h / 2,
-        w,
-        h
-    );
-}
-
-function drawCircle(x, y, r, color) {
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fillStyle = color;
-    ctx.fill();
+    ctx.fillRect(x - w / 2, y - h / 2, w, h);
 }
 
 /* =========================
@@ -517,42 +436,48 @@ function drawCircle(x, y, r, color) {
 ========================= */
 
 function getNearestObject() {
-
-    let closest = null;
-    let closestDistance = Infinity;
+    let nearest = null;
+    let best = Infinity;
 
     for (const obj of objects) {
-
         const dx = obj.x - player.x;
         const dy = obj.y - player.y;
-
         const distance = Math.hypot(dx, dy);
 
-        if (distance > 2) continue;
+        if (distance > 2.2) continue;
 
-        let angle =
-            Math.atan2(dy, dx) -
-            player.angle;
+        let angle = Math.atan2(dy, dx) - player.angle;
 
-        while (angle > Math.PI)
-            angle -= Math.PI * 2;
+        while (angle > Math.PI) angle -= Math.PI * 2;
+        while (angle < -Math.PI) angle += Math.PI * 2;
 
-        while (angle < -Math.PI)
-            angle += Math.PI * 2;
+        if (Math.abs(angle) > 0.8) continue;
 
-        if (Math.abs(angle) > 0.5)
-            continue;
-
-        if (distance < closestDistance) {
-            closestDistance = distance;
-            closest = obj;
+        if (distance < best) {
+            best = distance;
+            nearest = obj;
         }
     }
 
-    return closest;
+    return nearest;
+}
+
+function nearDoor() {
+    return Math.hypot(
+        door.x - player.x,
+        door.y - player.y
+    ) < 2.2;
 }
 
 function interact() {
+    if (cameraOpen) return;
+
+    if (nearDoor()) {
+        doorClosed = !doorClosed;
+        $("interaction").textContent =
+            doorClosed ? "Дверь закрыта." : "Дверь открыта.";
+        return;
+    }
 
     const obj = getNearestObject();
 
@@ -560,43 +485,22 @@ function interact() {
 
     if (obj.type === "computer") {
         openCameraSystem();
-        return;
     }
 
     if (obj.type === "shotgun") {
-
         player.weapon = "shotgun";
-
-        weaponText.textContent =
-            "Оружие: дробовик";
-
-        ammoText.textContent =
-            "Патроны: " + player.ammo;
-
-        hint.textContent =
-            "F — стрелять. Во время движения стрелять нельзя.";
-
-        return;
+        $("weapon").textContent = "Оружие: дробовик";
+        $("ammo").textContent = "Патроны: " + player.ammo;
+        $("interaction").textContent = "F / ОГОНЬ — стрелять. Только стоя.";
     }
 
     if (obj.type === "camera") {
-
-        hint.textContent =
-            "Камера готова. Можно использовать вспышку.";
-
         flashCamera();
-
-        return;
     }
 
     if (obj.type === "stove") {
-
         stove = 100;
-
-        hint.textContent =
-            "Ты подкинул топливо в печку.";
-
-        return;
+        $("interaction").textContent = "Ты затопил печку.";
     }
 }
 
@@ -604,129 +508,123 @@ function interact() {
    ДВЕРЬ
 ========================= */
 
-let doorClosed = false;
+$("mobileDoor").onclick = () => {
+    if (deviceMode !== "mobile") return;
 
-function updateDoorInteraction() {
-
-    const dx = 15.5 - player.x;
-    const dy = 12.5 - player.y;
-
-    const distance = Math.hypot(dx, dy);
-
-    if (distance < 1.8) {
-
-        hint.textContent =
-            doorClosed
-                ? "E — открыть дверь"
-                : "E — закрыть дверь";
-
-        if (keys["e"]) {
-            doorClosed = !doorClosed;
-
-            keys["e"] = false;
-        }
+    if (nearDoor()) {
+        doorClosed = !doorClosed;
+        $("interaction").textContent =
+            doorClosed ? "Дверь закрыта." : "Дверь открыта.";
+    } else {
+        $("interaction").textContent = "Подойди к двери.";
     }
-}
+};
 
 /* =========================
    ДРОБОВИК
 ========================= */
 
 function shoot() {
+    if (cameraOpen || player.weapon !== "shotgun") return;
 
-    if (cameraScreen.style.display === "block")
-        return;
-
-    if (player.weapon !== "shotgun")
-        return;
-
-    if (player.ammo <= 0) {
-
-        hint.textContent =
-            "Дробовик пуст.";
-
+    if (isMoving()) {
+        $("interaction").textContent = "Нельзя стрелять во время движения.";
         return;
     }
 
-    /*
-        Стрелять можно только когда игрок стоит.
-    */
-
-    if (
-        keys["w"] ||
-        keys["a"] ||
-        keys["s"] ||
-        keys["d"]
-    ) {
-
-        hint.textContent =
-            "Нельзя стрелять во время движения.";
-
+    if (player.ammo <= 0) {
+        $("interaction").textContent = "Патроны закончились.";
         return;
     }
 
     player.ammo--;
-
-    ammoText.textContent =
-        "Патроны: " + player.ammo;
+    $("ammo").textContent = "Патроны: " + player.ammo;
 
     player.shooting = true;
 
-    /*
-        Вспышка выстрела.
-    */
-
-    ctx.fillStyle = "rgba(255,255,220,.8)";
+    ctx.fillStyle = "rgba(255,220,130,.65)";
     ctx.fillRect(0, 0, W, H);
 
     setTimeout(() => {
         player.shooting = false;
-    }, 80);
+    }, 100);
 
-    hint.textContent =
-        "БАХ!";
+    $("interaction").textContent = "БАХ!";
 }
 
+$("mobileInteract").onclick = () => {
+    if (deviceMode === "mobile") interact();
+};
+
+$("mobileShoot").onclick = () => {
+    if (deviceMode === "mobile") shoot();
+};
+
 /* =========================
-   ВСПЫШКА КАМЕРЫ
+   ВСПЫШКА
 ========================= */
 
 function flashCamera() {
-
-    ctx.fillStyle = "white";
+    ctx.fillStyle = "#fff";
     ctx.fillRect(0, 0, W, H);
 
-    setTimeout(() => {
-        render3D();
-    }, 100);
+    setTimeout(() => render3D(), 100);
 
-    hint.textContent =
-        "ВСПЫШКА!";
+    $("interaction").textContent = "ВСПЫШКА!";
 }
+
+$("mobileFlash").onclick = () => {
+    if (deviceMode !== "mobile") return;
+
+    const obj = getNearestObject();
+
+    if (obj && obj.type === "camera") {
+        flashCamera();
+    } else {
+        $("interaction").textContent = "Подойди к камере.";
+    }
+};
 
 /* =========================
    КАМЕРЫ
 ========================= */
 
-let currentCamera = 0;
-
 function openCameraSystem() {
-
-    cameraScreen.style.display = "block";
-
+    cameraOpen = true;
+    $("cameraScreen").style.display = "block";
     showCamera(0);
 }
 
 function closeCameraSystem() {
-
-    cameraScreen.style.display = "none";
-
-    hint.textContent =
-        "WASD — движение | E — взаимодействие";
+    cameraOpen = false;
+    $("cameraScreen").style.display = "none";
 }
 
-function showCamera(number) {
+$("closeCameras").onclick = closeCameraSystem;
 
+document.querySelectorAll("[data-cam]").forEach(button => {
+    button.onclick = () => {
+        showCamera(Number(button.dataset.cam));
+    };
+});
+
+$("mobileCameras").onclick = () => {
+    if (deviceMode !== "mobile") return;
+
+    if (cameraOpen) {
+        closeCameraSystem();
+    } else {
+        const obj = getNearestObject();
+
+        if (obj && obj.type === "computer") {
+            openCameraSystem();
+        } else {
+            $("interaction").textContent = "Подойди к компьютеру.";
+        }
+    }
+};
+
+function showCamera(number) {
     currentCamera = number;
 
     const names = [
@@ -735,139 +633,71 @@ function showCamera(number) {
         "КАМЕРА 03 — КОРИДОР"
     ];
 
-    cameraText.textContent =
-        names[number];
+    $("cameraText").textContent = names[number];
 
-    /*
-        Простая имитация изображения камер.
-    */
+    const colors = ["#252525", "#151515", "#101010"];
 
-    const view =
-        document.getElementById("cameraView");
-
-    if (number === 0) {
-        view.style.background =
-            "repeating-linear-gradient(0deg,rgba(255,255,255,.04) 0px,rgba(255,255,255,.04) 2px,transparent 2px,transparent 5px),#252525";
-    }
-
-    if (number === 1) {
-        view.style.background =
-            "repeating-linear-gradient(90deg,rgba(255,255,255,.03) 0px,rgba(255,255,255,.03) 4px,transparent 4px,transparent 8px),#151515";
-    }
-
-    if (number === 2) {
-        view.style.background =
-            "repeating-linear-gradient(0deg,rgba(255,255,255,.05) 0px,rgba(255,255,255,.05) 3px,transparent 3px,transparent 7px),#111";
-    }
+    $("cameraView").style.background = colors[number];
 }
-
-document.querySelectorAll("[data-cam]").forEach(button => {
-
-    button.addEventListener("click", () => {
-
-        const number =
-            Number(button.dataset.cam);
-
-        showCamera(number);
-    });
-});
-
-closeCameras.addEventListener(
-    "click",
-    closeCameraSystem
-);
 
 /* =========================
    ПЕЧКА
 ========================= */
 
-let stove = 100;
-
 function updateStove(dt) {
+    stove = Math.max(0, stove - dt * 1.5);
 
-    stove -= dt * 1.5;
-
-    if (stove < 0)
-        stove = 0;
-
-    stoveFill.style.width =
-        stove + "%";
+    $("stoveFill").style.width = stove + "%";
 
     if (stove <= 25) {
-
-        hint.textContent =
-            "ПЕЧКА ПОЧТИ ПОГАСЛА! Нужно идти к ней.";
+        $("interaction").textContent = "ПЕЧКА ПОЧТИ ПОГАСЛА!";
     }
 }
 
 /* =========================
-   HUD
+   ПОДСКАЗКИ
 ========================= */
 
 function updateHint() {
+    if (cameraOpen) return;
 
-    if (cameraScreen.style.display === "block")
+    if (nearDoor()) {
+        $("interaction").textContent =
+            doorClosed ? "E — открыть дверь" : "E — закрыть дверь";
         return;
+    }
 
     const obj = getNearestObject();
 
-    if (obj) {
+    if (!obj) return;
 
-        if (obj.type === "computer")
-            hint.textContent =
-                "E — открыть камеры";
+    const hints = {
+        computer: "E — открыть камеры",
+        shotgun: "E — взять дробовик",
+        camera: "E — использовать вспышку",
+        stove: "E — затопить печку"
+    };
 
-        else if (obj.type === "shotgun")
-            hint.textContent =
-                "E — взять дробовик";
-
-        else if (obj.type === "camera")
-            hint.textContent =
-                "E — использовать вспышку";
-
-        else if (obj.type === "stove")
-            hint.textContent =
-                "E — затопить печку";
-
-    } else {
-
-        hint.textContent =
-            "WASD — движение | мышь — обзор | E — действие";
-    }
+    $("interaction").textContent = hints[obj.type] || "";
 }
 
 /* =========================
    ИГРОВОЙ ЦИКЛ
 ========================= */
 
-let lastTime = performance.now();
-
 function gameLoop(time) {
-
-    const dt =
-        Math.min(
-            (time - lastTime) / 1000,
-            0.05
-        );
-
+    const dt = Math.min((time - lastTime) / 1000, 0.05);
     lastTime = time;
 
-    updateMovement(dt);
-    updateDoorInteraction();
-    updateStove(dt);
-    updateHint();
+    if (deviceMode) {
+        updateMovement(dt);
+        updateStove(dt);
+        updateHint();
+    }
 
     render3D();
 
     requestAnimationFrame(gameLoop);
 }
 
-gameLoop(performance.now());
-
-/* =========================
-   СТАРТОВАЯ ПОЗИЦИЯ
-========================= */
-
-player.x = 12;
-player.y = 10.5;
-player.angle = Math.PI;
+requestAnimationFrame(gameLoop);
